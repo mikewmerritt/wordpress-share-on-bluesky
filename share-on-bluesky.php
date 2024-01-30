@@ -156,6 +156,7 @@ function add_profile_section( $user ) {
 add_action( 'show_user_profile', __NAMESPACE__ . '\add_profile_section' );
 add_action( 'edit_user_profile', __NAMESPACE__ . '\add_profile_section' );
 
+
 /**
  * Save Bluesky data when the user profile is updated.
  *
@@ -187,7 +188,7 @@ function save_bluesky_profile_info( $user_id ) {
 		$response = wp_safe_remote_post(
 			esc_url_raw( $session_url ),
 			array(
-				'user-agent' => "$user_agent; ActivityPub",
+				'user-agent' => "$user_agent; Share on BlueSky",
 				'headers'    => array(
 					'Content-Type' => 'application/json',
 				),
@@ -219,16 +220,82 @@ function save_bluesky_profile_info( $user_id ) {
 		) {
 			update_user_meta( $user_id, 'bluesky_access_jwt', $data['accessJwt'] );
 			update_user_meta( $user_id, 'bluesky_refresh_jwt', $data['refreshJwt'] );
+			update_user_meta( $user_id, 'bluesky_refresh_token_time', time() );			
 			update_user_meta( $user_id, 'bluesky_did', $data['did'] );
 		} else {
 			delete_user_meta( $user_id, 'bluesky_access_jwt' );
 			delete_user_meta( $user_id, 'bluesky_refresh_jwt' );
 			delete_user_meta( $user_id, 'bluesky_did' );
+			delete_user_meta( $user_id, 'bluesky_refresh_token_time' );			
 		}
 	}
 }
 add_action( 'personal_options_update', __NAMESPACE__ . '\save_bluesky_profile_info' );
 add_action( 'edit_user_profile_update', __NAMESPACE__ . '\save_bluesky_profile_info' );
+
+
+/**
+ * Gets the access token
+ *
+ * @param int $author_id Post author ID.
+ * @return void
+ */
+
+function get_bluesky_token( $author_id ) {
+
+	$access_token = get_user_meta( $author_id, 'bluesky_access_jwt' );
+	$token_creation_time = get_user_meta( $author_id, 'bluesky_refresh_token_time' );
+
+	if( intval($token_creation_time) + 3600 < time() ) {
+		return refresh_bluesky_tokens( $author_id );
+	}
+
+	return $access_token;
+
+}
+
+
+/**
+ * Refreshes the tokens
+ * To-Do: Validate refresh token is updated after longer period of time.
+ *
+ * @param int $author_id Post author ID.
+ * @return void
+ */
+
+function refresh_bluesky_tokens( $author_id ) {
+	$refresh_token = get_user_meta( $author_id, 'bluesky_refresh_jwt', true );
+	$bluesky_domain = get_user_meta( $author_id, 'bluesky_domain', true );
+	$bluesky_domain = trailingslashit( $bluesky_domain );
+	$wp_version     = \get_bloginfo( 'version' );
+	$user_agent     = \apply_filters( 'http_headers_useragent', 'WordPress/' . $wp_version . '; ' . \get_bloginfo( 'url' ) );	
+	$session_url = $bluesky_domain . 'xrpc/com.atproto.server.refreshSession';
+
+	$response = wp_remote_post(
+		esc_url_raw( $session_url ),
+		array(
+			'user-agent' => "$user_agent; Share on BlueSky",
+			'headers' => array(
+				'Content-Type' => 'application/json',
+				'Authorization' => 'Bearer ' . $refresh_token,
+			),
+		)
+	);
+
+	if ( \is_wp_error( $response ) ) {
+		return;
+	}
+
+	$data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+	if (
+		! empty( $data['accessJwt'] )
+	) {
+		update_user_meta( $author_id, 'bluesky_access_jwt', $data['accessJwt'] );
+		update_user_meta( $author_id, 'bluesky_refresh_jwt', $data['refreshJwt'] );
+		return $data['accessJwt'];
+	}
+}
 
 /**
  * Show an admin notice if the user is not connected to Bluesky.
@@ -269,7 +336,7 @@ add_action( 'publish_post', __NAMESPACE__ . '\publish_post', 10, 2 );
 function send_post( $post_id ) {
 	$post = get_post( $post_id );
 
-	$access_token   = get_user_meta( $post->post_author, 'bluesky_access_jwt', true );
+	$access_token = get_bluesky_token( $post->post_author );
 	$did            = get_user_meta( $post->post_author, 'bluesky_did', true );
 	$bluesky_domain = get_user_meta( $post->post_author, 'bluesky_domain', true );
 	$bluesky_domain = trailingslashit( $bluesky_domain );
@@ -319,22 +386,22 @@ add_action( 'bluesky_send_post', __NAMESPACE__ . '\send_post' );
  *
  * @return void
  */
-function add_scheduler() {
+/*function add_scheduler() {
 	if ( ! \wp_next_scheduled( 'bluesky_refresh_token' ) ) {
 		\wp_schedule_event( time(), 'weekly', 'bluesky_refresh_token' );
 	}
 }
-\register_activation_hook( __FILE__, __NAMESPACE__ . '\add_scheduler' );
+\register_activation_hook( __FILE__, __NAMESPACE__ . '\add_scheduler' );*/
 
 /**
  * Remove the weekly event to refresh the access token.
  *
  * @return void
  */
-function remove_scheduler() {
+/*function remove_scheduler() {
 	\wp_clear_scheduled_hook( 'bluesky_refresh_token' );
 }
-\register_deactivation_hook( __FILE__, __NAMESPACE__ . '\remove_scheduler' );
+\register_deactivation_hook( __FILE__, __NAMESPACE__ . '\remove_scheduler' );*/
 
 /**
  * Returns an excerpt
