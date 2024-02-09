@@ -382,28 +382,6 @@ function send_post( $post_id ) {
 add_action( 'bluesky_send_post', __NAMESPACE__ . '\send_post' );
 
 /**
- * Add a weekly event to refresh the access token.
- *
- * @return void
- */
-/*function add_scheduler() {
-	if ( ! \wp_next_scheduled( 'bluesky_refresh_token' ) ) {
-		\wp_schedule_event( time(), 'weekly', 'bluesky_refresh_token' );
-	}
-}
-\register_activation_hook( __FILE__, __NAMESPACE__ . '\add_scheduler' );*/
-
-/**
- * Remove the weekly event to refresh the access token.
- *
- * @return void
- */
-/*function remove_scheduler() {
-	\wp_clear_scheduled_hook( 'bluesky_refresh_token' );
-}
-\register_deactivation_hook( __FILE__, __NAMESPACE__ . '\remove_scheduler' );*/
-
-/**
  * Returns an excerpt
  *
  * @param WP_Post $post
